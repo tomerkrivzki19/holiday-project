@@ -1,6 +1,7 @@
 pipeline {
     agent any
 
+// git update
     environment {
         IMAGE_NAME = 'holiday-app'
         DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
