@@ -1,0 +1,110 @@
+pipeline {
+    agent any
+
+// git update
+    environment {
+        IMAGE_NAME = 'holiday-app'
+        DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
+        APP_PORT = '3000'
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm ci'
+            }
+        }
+
+        stage('Test Application') {
+            steps {
+                sh '''
+                    node --check server.js
+
+                    PORT=${APP_PORT} npm start > application.log 2>&1 &
+                    APP_PID=$!
+
+                    sleep 5
+                    curl --fail http://localhost:${APP_PORT}/health
+
+                    kill $APP_PID
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .'
+            }
+        }
+
+        stage('Tag Docker Image') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "${DOCKERHUB_CREDENTIALS}",
+                        usernameVariable: 'DOCKERHUB_USERNAME',
+                        passwordVariable: 'DOCKERHUB_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        docker tag \
+                          ${IMAGE_NAME}:${BUILD_NUMBER} \
+                          ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER}
+
+                        docker tag \
+                          ${IMAGE_NAME}:${BUILD_NUMBER} \
+                          ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Push Image to Docker Hub') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "${DOCKERHUB_CREDENTIALS}",
+                        usernameVariable: 'DOCKERHUB_USERNAME',
+                        passwordVariable: 'DOCKERHUB_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKERHUB_PASSWORD" |
+                          docker login \
+                            --username "$DOCKERHUB_USERNAME" \
+                            --password-stdin
+
+                        docker push \
+                          ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${BUILD_NUMBER}
+
+                        docker push \
+                          ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully.'
+            echo 'The Docker image was pushed to Docker Hub.'
+        }
+
+        failure {
+            echo 'Pipeline failed. Check the Jenkins console output.'
+            sh 'cat application.log || true'
+        }
+
+        always {
+            sh 'docker logout || true'
+            deleteDir()
+        }
+    }
+}
