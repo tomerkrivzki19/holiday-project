@@ -108,6 +108,40 @@ pipeline {
                 '''
             }
         }
+
+        stage('Deploy with Ansible') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'holiday-deploy-ssh',
+                        keyFileVariable: 'SSH_PRIVATE_KEY',
+                        usernameVariable: 'SSH_USERNAME'
+                    ),
+                    usernamePassword(
+                        credentialsId: "${DOCKERHUB_CREDENTIALS}",
+                        usernameVariable: 'DOCKERHUB_USERNAME',
+                        passwordVariable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        mkdir -p "$HOME/.ssh"
+                        chmod 700 "$HOME/.ssh"
+
+                        ssh-keyscan -H 192.168.50.133 >> "$HOME/.ssh/known_hosts"
+                        chmod 600 "$HOME/.ssh/known_hosts"
+                        chmod 600 "$SSH_PRIVATE_KEY"
+
+                        ansible-playbook \
+                        -i ansible/inventory.ini \
+                        ansible/deploy.yml \
+                        --private-key "$SSH_PRIVATE_KEY" \
+                        --user "$SSH_USERNAME" \
+                        --extra-vars "dockerhub_username=${DOCKERHUB_USERNAME}" \
+                        --extra-vars "image_tag=${BUILD_NUMBER}"
+                    '''
+                }
+            }
+        }
     }
 
     post {
