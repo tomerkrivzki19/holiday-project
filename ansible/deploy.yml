@@ -1,0 +1,71 @@
+---
+- name: Deploy Holiday application
+  hosts: deployment_servers
+  become: true
+
+  vars:
+    dockerhub_username: tomerkrivizki19
+    image_name: "holiday-app"
+    image_tag: "latest"
+    container_name: "holiday-container"
+    host_port: 3000
+    container_port: 3000
+
+  tasks:
+    - name: Update apt package cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install Docker and Python Docker library
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - python3-docker
+        state: present
+
+    - name: Ensure Docker service is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Pull the latest application image
+      community.docker.docker_image:
+        name: "{{ dockerhub_username }}/{{ image_name }}"
+        tag: "{{ image_tag }}"
+        source: pull
+        force_source: true
+
+    - name: Stop and remove the previous container
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        state: absent
+
+    - name: Start the new application container
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ dockerhub_username }}/{{ image_name }}:{{ image_tag }}"
+        state: started
+        restart_policy: unless-stopped
+        published_ports:
+          - "{{ host_port }}:{{ container_port }}"
+
+    - name: Wait until the application is available
+      ansible.builtin.uri:
+        url: "http://localhost:{{ host_port }}/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: health_check
+      retries: 10
+      delay: 3
+      until:
+        - health_check.status == 200
+        - health_check.json.status == "healthy"
+
+    - name: Display deployment result
+      ansible.builtin.debug:
+        msg: >-
+          Holiday application is running successfully at
+          http://{{ ansible_host }}:{{ host_port }}
