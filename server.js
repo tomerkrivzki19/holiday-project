@@ -49,7 +49,8 @@ app.get("/health", (req, res) => {
   console.log("GET /health");
   res.status(200).json({
     status: "healthy",
-    service: "holiday-events"
+    service: "holiday-events",
+    version: process.env.APP_VERSION || "development",
   });
 });
 
@@ -109,9 +110,9 @@ app.post("/api/register", (req, res) => {
         name: name.trim(),
         email: email.trim(),
         eventId: event.id,
-        eventName: event.name
+        eventName: event.name,
       },
-      event
+      event,
     });
   } catch (error) {
     console.error("Unexpected server error:", error.message);
