@@ -51,6 +51,34 @@
         published_ports:
           - "{{ host_port }}:{{ container_port }}"
 
+        env:
+          NODE_ENV: "production"
+          PORT: "3000"
+          APP_VERSION: "{{ image_tag }}"
+
+    - name: Wait for the deployed application to become healthy
+      ansible.builtin.uri:
+        url: "http://localhost:{{ host_port }}/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: health_check
+      retries: 10
+      delay: 3
+      until:
+        - health_check.status == 200
+        - health_check.json.status == "healthy"
+        - health_check.json.version == image_tag | string
+
+    - name: Display successful deployment information
+      ansible.builtin.debug:
+        msg:
+          - "Deployment completed successfully"
+          - "Application URL: http://{{ ansible_host }}:{{ host_port }}"
+          - "Health status: {{ health_check.json.status }}"
+          - "Deployed version: {{ health_check.json.version }}"
+          - "Docker image: {{ dockerhub_username }}/{{ image_name }}:{{ image_tag }}"
+
     - name: Wait until the application is available
       ansible.builtin.uri:
         url: "http://localhost:{{ host_port }}/health"
