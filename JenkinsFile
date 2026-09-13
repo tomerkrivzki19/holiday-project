@@ -1,11 +1,10 @@
 pipeline {
     agent any
 
-// git update
     environment {
         IMAGE_NAME = 'holiday-app'
         DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
-        APP_PORT = '3000'
+        TEST_PORT = '3001'
     }
 
     stages {
@@ -26,13 +25,17 @@ pipeline {
                 sh '''
                     node --check server.js
 
-                    PORT=${APP_PORT} npm start > application.log 2>&1 &
+                    PORT=${TEST_PORT} node server.js > application.log 2>&1 &
                     APP_PID=$!
 
-                    sleep 5
-                    curl --fail http://localhost:${APP_PORT}/health
+                    cleanup() {
+                        kill "$APP_PID" 2>/dev/null || true
+                    }
 
-                    kill $APP_PID
+                    trap cleanup EXIT
+
+                    sleep 5
+                    curl --fail http://localhost:${TEST_PORT}/health
                 '''
             }
         }
@@ -49,7 +52,7 @@ pipeline {
                     usernamePassword(
                         credentialsId: "${DOCKERHUB_CREDENTIALS}",
                         usernameVariable: 'DOCKERHUB_USERNAME',
-                        passwordVariable: 'DOCKERHUB_PASSWORD'
+                        passwordVariable: 'DOCKERHUB_TOKEN'
                     )
                 ]) {
                     sh '''
@@ -71,11 +74,11 @@ pipeline {
                     usernamePassword(
                         credentialsId: "${DOCKERHUB_CREDENTIALS}",
                         usernameVariable: 'DOCKERHUB_USERNAME',
-                        passwordVariable: 'DOCKERHUB_PASSWORD'
+                        passwordVariable: 'DOCKERHUB_TOKEN'
                     )
                 ]) {
                     sh '''
-                        echo "$DOCKERHUB_PASSWORD" |
+                        echo "$DOCKERHUB_TOKEN" |
                           docker login \
                             --username "$DOCKERHUB_USERNAME" \
                             --password-stdin
@@ -94,12 +97,12 @@ pipeline {
     post {
         success {
             echo 'Pipeline completed successfully.'
-            echo 'The Docker image was pushed to Docker Hub.'
+            echo 'Docker image was published to Docker Hub.'
         }
 
         failure {
-            echo 'Pipeline failed. Check the Jenkins console output.'
-            sh 'cat application.log || true'
+            echo 'Pipeline failed. Review the console output.'
+            sh 'test -f application.log && cat application.log || true'
         }
 
         always {
