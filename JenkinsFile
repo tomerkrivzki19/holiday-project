@@ -93,6 +93,21 @@ pipeline {
                 }
             }
         }
+
+        stage('Verify Git Version') {
+            steps {
+                sh '''
+                    echo "Branch:"
+                    git branch --show-current
+
+                    echo "Commit SHA:"
+                    git rev-parse HEAD
+
+                    echo "Latest commit:"
+                    git log -1 --oneline
+                '''
+            }
+        }
     }
 
     post {
